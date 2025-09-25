@@ -27,14 +27,23 @@ llm = HuggingFaceEndpoint(
 )
 
 @st.cache_data(ttl=7200)
+@st.cache_data(ttl=7200)
 def load_docs():
     ist = ZoneInfo("Asia/Kolkata")
     today = datetime.now(ist).date()
     docs = list(collection.find().sort('timestamp', -1).limit(100))
-    today_docs = [
-        d for d in docs
-        if datetime.fromisoformat(d['pub_date'].replace('Z', '+00:00')).astimezone(ist).date() == today
-    ]
+    today_docs = []
+    for d in docs:
+        try:
+            # Parse RSS date format (e.g., 'Wed, 06 Aug 2025 16:30:00')
+            pub_date_str = d['pub_date']
+            pub_date = datetime.strptime(pub_date_str, '%a, %d %b %Y %H:%M:%S')
+            # Assume UTC for RSS and convert to IST
+            pub_date = pub_date.replace(tzinfo=timezone.utc).astimezone(ist)
+            if pub_date.date() == today:
+                today_docs.append(d)
+        except (ValueError, KeyError):
+            continue  # Skip invalid dates or missing fields
     texts = [f"Title: {d['title']}\nCategory: {d['category']}\nDate: {d['pub_date']}\nDescription: {d['description']}\nLink: {d['link']}" for d in today_docs]
     vectorstore = FAISS.from_texts(texts, embeddings) if texts else None
     return vectorstore, today_docs
