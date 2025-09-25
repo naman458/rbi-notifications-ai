@@ -1,7 +1,7 @@
 import streamlit as st
 import pymongo
-from datetime import timedelta
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_huggingface import HuggingFaceEndpoint
@@ -10,9 +10,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from dotenv import load_dotenv
 import os
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-
 
 load_dotenv()
 client = pymongo.MongoClient(os.getenv('MONGODB_URI'))
@@ -22,14 +19,12 @@ collection = db['notifications']
 # RAG Setup (free Hugging Face)
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 llm = HuggingFaceEndpoint(
-    repo_id="google/flan-t5-base",
+    repo_id="google/flan-t5-large",
     huggingfacehub_api_token=os.getenv('HF_TOKEN'),
     temperature=0.1
 )
 
-@st.cache_data(ttl=7200)
-@st.cache_data(ttl=7200)
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=7200)  # Single cache decorator
 def load_docs():
     ist = ZoneInfo("Asia/Kolkata")
     two_weeks_ago = datetime.now(ist).date() - timedelta(days=14)  # Past 2 weeks
@@ -84,7 +79,7 @@ with tab1:
     st.dataframe([{"Title": d['title'], "Category": d['category'], "Date": d['pub_date'], "Link": d['link']} for d in docs])
 
 with tab2:
-    vectorstore, today_docs = load_docs()
+    vectorstore, recent_docs = load_docs()  # Updated to match return variable
     chain = rag_chain(vectorstore)
     if "messages" not in st.session_state:
         st.session_state.messages = []
