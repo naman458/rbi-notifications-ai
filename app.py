@@ -1,5 +1,6 @@
 import streamlit as st
 import pymongo
+from datetime import timedelta
 from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -11,6 +12,7 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
 
 load_dotenv()
 client = pymongo.MongoClient(os.getenv('MONGODB_URI'))
@@ -28,11 +30,12 @@ llm = HuggingFaceEndpoint(
 
 @st.cache_data(ttl=7200)
 @st.cache_data(ttl=7200)
+@st.cache_data(ttl=7200)
 def load_docs():
     ist = ZoneInfo("Asia/Kolkata")
-    today = datetime.now(ist).date()
+    two_weeks_ago = datetime.now(ist).date() - timedelta(days=14)  # Past 2 weeks
     docs = list(collection.find().sort('timestamp', -1).limit(100))
-    today_docs = []
+    recent_docs = []
     for d in docs:
         try:
             # Parse RSS date format (e.g., 'Wed, 06 Aug 2025 16:30:00')
@@ -40,19 +43,17 @@ def load_docs():
             pub_date = datetime.strptime(pub_date_str, '%a, %d %b %Y %H:%M:%S')
             # Assume UTC for RSS and convert to IST
             pub_date = pub_date.replace(tzinfo=timezone.utc).astimezone(ist)
-            if pub_date.date() == today:
-                today_docs.append(d)
+            if two_weeks_ago <= pub_date.date() <= datetime.now(ist).date():
+                recent_docs.append(d)
         except (ValueError, KeyError):
             continue  # Skip invalid dates or missing fields
-    texts = [f"Title: {d['title']}\nCategory: {d['category']}\nDate: {d['pub_date']}\nDescription: {d['description']}\nLink: {d['link']}" for d in today_docs]
+    texts = [f"Title: {d['title']}\nCategory: {d['category']}\nDate: {d['pub_date']}\nDescription: {d['description']}\nLink: {d['link']}" for d in recent_docs]
     vectorstore = FAISS.from_texts(texts, embeddings) if texts else None
-    return vectorstore, today_docs
+    return vectorstore, recent_docs
 
 def rag_chain(vectorstore):
-    if not vectorstore:
-        return lambda x: "No notifications found for today."
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    template = """Based only on the following RBI context, list all notifications from today with their title, category, date, link, and a concise synopsis (2-3 sentences summarizing the description). Format each notification clearly with these details. If no notifications are found, say so explicitly.
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) if vectorstore else None
+    template = """Based only on the following RBI context, list all notifications from the past 2 weeks with their title, category, date, link, and a concise synopsis (2-3 sentences summarizing the description). Format each notification clearly with these details. If no notifications are found, say so explicitly.
 
 Context: {context}
 
@@ -61,12 +62,18 @@ Question: {question}
 Answer:
 """
     prompt = PromptTemplate.from_template(template)
-    chain = (
-        {"context": retriever | (lambda docs: "\n\n".join([d.page_content for d in docs])), "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+    if not vectorstore:
+        # Return a simple Runnable for no context case
+        def no_context():
+            return "No notifications found in the past 2 weeks."
+        chain = RunnablePassthrough.assign(context=no_context) | prompt | llm | StrOutputParser()
+    else:
+        chain = (
+            {"context": retriever | (lambda docs: "\n\n".join([d.page_content for d in docs])), "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
     return chain
 
 st.title("RBI Updates Dashboard & AI Assistant")
