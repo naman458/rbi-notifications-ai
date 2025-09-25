@@ -22,7 +22,7 @@ collection = db['notifications']
 # RAG Setup (free Hugging Face)
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 llm = HuggingFaceEndpoint(
-    repo_id="mistralai/Mistral-7B-Instruct-v0.1",
+    repo_id="google/flan-t5-base",
     huggingfacehub_api_token=os.getenv('HF_TOKEN'),
     temperature=0.1
 )
