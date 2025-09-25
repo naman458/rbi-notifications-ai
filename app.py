@@ -23,9 +23,8 @@ collection = db['notifications']
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 llm = HuggingFaceEndpoint(
     repo_id="mistralai/Mistral-7B-Instruct-v0.1",
-    huggingfacehub_api_token=os.getenv('HF_TOKEN'),  # Add HF_TOKEN to .env later
-    temperature=0.1,
-    max_length=512
+    huggingfacehub_api_token=os.getenv('HF_TOKEN'),
+    temperature=0.1
 )
 
 @st.cache_data(ttl=7200)
